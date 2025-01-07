@@ -8,24 +8,29 @@
       </el-button>
 
       <div class="filter-section">
-        <el-input v-model="filter.keyword" placeholder="搜索用户名/姓名" clearable @keyup.enter="handleFilter">
-          <template #prefix>
-            <el-icon>
-              <Search />
-            </el-icon>
-          </template>
-        </el-input>
-
-        <el-select v-model="filter.role" placeholder="角色" clearable>
-          <el-option label="管理员" value="admin" />
-          <el-option label="社长" value="club_president" />
-        </el-select>
-
-        <el-button type="primary" @click="handleFilter">
+      <el-input v-model="filter.keyword" placeholder="请输入用户名" clearable @keyup.enter="handleFilter" style="width: 200px;">
+        <template #prefix>
           <el-icon>
             <Search />
-          </el-icon>查询
-        </el-button>
+          </el-icon>
+        </template>
+      </el-input>
+
+      <el-select v-model="filter.role" placeholder="角色" clearable style="width: 120px;">
+        <el-option label="管理员" value="admin" />
+        <el-option label="社长" value="club_president" />
+      </el-select>
+
+      <el-button type="primary" @click="handleFilter">
+        <el-icon>
+          <Search />
+        </el-icon>查询
+      </el-button>
+      <el-button @click="resetFilter">
+        <el-icon>
+          <Refresh />
+        </el-icon>重置
+      </el-button>
       </div>
     </div>
 
@@ -123,7 +128,7 @@
 <script setup>
 import { ref, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Edit, Delete, Search } from '@element-plus/icons-vue'
+import { Plus, Edit, Delete, Search, Refresh } from '@element-plus/icons-vue'
 import axios from '../../utils/axios'
 import { useUserStore } from '../../stores/user'
 
@@ -265,7 +270,14 @@ watch(dialogVisible, (val) => {
 const fetchUsers = async () => {
   loading.value = true
   try {
-    const response = await axios.get('/api/users')
+    const params = {}
+    if (filter.value.keyword) {
+      params.keyword = filter.value.keyword
+    }
+    if (filter.value.role) {
+      params.role = filter.value.role
+    }
+    const response = await axios.get('/api/users', { params })
     if (response.data.code === 200) {
       users.value = Array.isArray(response.data.data) ? response.data.data : []
     }
@@ -279,6 +291,17 @@ const fetchUsers = async () => {
 
 // 处理过滤
 const handleFilter = () => {
+  currentPage.value = 1 // 重置页码到第一页
+  fetchUsers() // 直接调用 fetchUsers，它会使用 filter 中的值
+}
+
+// 重置过滤
+const resetFilter = () => {
+  filter.value = {
+    keyword: '',
+    role: ''
+  }
+  currentPage.value = 1 // 重置页码到第一页
   fetchUsers()
 }
 

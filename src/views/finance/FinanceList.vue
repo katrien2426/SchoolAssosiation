@@ -17,7 +17,6 @@
               <el-option label="收入" value="income" />
               <el-option label="支出" value="expense" />
             </el-select>
-            <div v-if="filter.type" class="selected-option">已选择: {{ filter.type === 'income' ? '收入' : '支出' }}</div>
           </el-form-item>
 
           <el-form-item label="日期范围">
@@ -26,10 +25,9 @@
           </el-form-item>
 
           <el-form-item label="社团" width>
-            <el-select v-model="filter.clubId" placeholder="选择社团" clearable style="width: 180px;">
+            <el-select v-model="filter.clubId" placeholder="选择社团" clearable style="width: 150px;">
               <el-option v-for="club in clubs" :key="club.clubId" :label="club.clubName" :value="club.clubId" />
             </el-select>
-            <div v-if="filter.clubId" class="selected-option">已选择: {{ getClubName(filter.clubId) }}</div>
           </el-form-item>
 
           <el-form-item>
@@ -102,7 +100,7 @@
     <!-- 财务记录表格 -->
     <el-card class="table-card" shadow="never">
       <el-table :data="records" style="width: 100%" v-loading="loading" :header-cell-style="{ background: '#f5f7fa' }">
-        <el-table-column prop="transactionDate" label="日期" width="200">
+        <el-table-column prop="transactionDate" label="日期" width="150">
           <template #default="scope">
             {{ formatDate(scope.row.transactionDate) }}
           </template>
@@ -433,9 +431,11 @@ const handleSubmit = async () => {
           `/api/finances/${form.value.id}` : '/api/finances'
         const method = form.value.id ? 'put' : 'post'
 
+        // 将日期转换为日期时间格式
         const formData = {
           ...form.value,
-          recordedBy: currentUserId.value
+          recordedBy: currentUserId.value,
+          transactionDate: form.value.date ? `${form.value.date} 00:00:00` : null
         }
 
         const response = await request[method](url, formData)
@@ -459,7 +459,8 @@ const handleSubmit = async () => {
 
 const formatDate = (date) => {
   if (!date) return ''
-  return date.split('.')[0].replace('T', ' ')
+  // 只返回日期部分 YYYY-MM-DD
+  return date.split(' ')[0]
 }
 
 const formatAmount = (amount) => {

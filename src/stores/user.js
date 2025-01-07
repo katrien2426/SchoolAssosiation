@@ -15,7 +15,12 @@ export const useUserStore = defineStore('user', {
       console.log('Checking admin status:', state.user?.role)
       return state.user?.role?.toUpperCase() === 'ADMIN'
     },
-    username: (state) => state.user?.username
+    username: (state) => state.user?.username,
+    userInfo: (state) => state.user,
+    isClubPresident: (state) => {
+      console.log('Role check in store:', state.user?.role)
+      return state.user?.role === 'club_president'
+    }
   },
   
   actions: {

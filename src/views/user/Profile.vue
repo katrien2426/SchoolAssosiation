@@ -4,7 +4,12 @@
       <template #header>
         <div class="card-header">
           <span>个人资料</span>
-          <el-button type="primary" @click="handleEdit">编辑资料</el-button>
+          <div>
+            <el-button type="warning" @click="handleResetPassword" style="margin-right: 10px">
+              重置密码
+            </el-button>
+            <el-button type="primary" @click="handleEdit">编辑资料</el-button>
+          </div>
         </div>
       </template>
       
@@ -65,6 +70,44 @@
             type="primary"
             :loading="submitting"
             @click="handleSubmit"
+          >
+            确定
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
+
+    <!-- 重置密码对话框 -->
+    <el-dialog
+      v-model="passwordDialogVisible"
+      title="重置密码"
+      width="500px"
+    >
+      <el-form
+        ref="passwordFormRef"
+        :model="passwordForm"
+        :rules="passwordRules"
+        label-position="right"
+        label-width="100px"
+        style="max-width: 460px"
+      >
+        <el-form-item label="原密码" prop="oldPassword">
+          <el-input v-model="passwordForm.oldPassword" type="password" show-password />
+        </el-form-item>
+        <el-form-item label="新密码" prop="newPassword">
+          <el-input v-model="passwordForm.newPassword" type="password" show-password />
+        </el-form-item>
+        <el-form-item label="确认新密码" prop="confirmPassword">
+          <el-input v-model="passwordForm.confirmPassword" type="password" show-password />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="passwordDialogVisible = false">取消</el-button>
+          <el-button
+            type="primary"
+            :loading="submittingPassword"
+            @click="handlePasswordSubmit"
           >
             确定
           </el-button>
@@ -151,6 +194,75 @@ const handleSubmit = async () => {
 const formatDate = (date) => {
   if (!date) return ''
   return new Date(date).toLocaleString()
+}
+
+const passwordDialogVisible = ref(false)
+const passwordFormRef = ref(null)
+const submittingPassword = ref(false)
+
+const passwordForm = ref({
+  oldPassword: '',
+  newPassword: '',
+  confirmPassword: ''
+})
+
+const passwordRules = {
+  oldPassword: [
+    { required: true, message: '请输入原密码', trigger: 'blur' }
+  ],
+  newPassword: [
+    { required: true, message: '请输入新密码', trigger: 'blur' },
+    { min: 6, message: '密码长度不能小于6位', trigger: 'blur' }
+  ],
+  confirmPassword: [
+    { required: true, message: '请确认新密码', trigger: 'blur' },
+    {
+      validator: (rule, value, callback) => {
+        if (value !== passwordForm.value.newPassword) {
+          callback(new Error('两次输入的密码不一致'))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'blur'
+    }
+  ]
+}
+
+const handleResetPassword = () => {
+  passwordForm.value = {
+    oldPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  }
+  passwordDialogVisible.value = true
+}
+
+const handlePasswordSubmit = async () => {
+  if (!passwordFormRef.value) return
+  
+  await passwordFormRef.value.validate()
+  
+  submittingPassword.value = true
+  try {
+    await axios.put(`/api/users/${userStore.user.userId}/password`, {
+      oldPassword: passwordForm.value.oldPassword,
+      newPassword: passwordForm.value.newPassword
+    })
+    ElMessage.success('密码修改成功')
+    passwordDialogVisible.value = false
+    // 清空表单
+    passwordForm.value = {
+      oldPassword: '',
+      newPassword: '',
+      confirmPassword: ''
+    }
+  } catch (error) {
+    console.error('修改密码失败:', error)
+    ElMessage.error(error.response?.data?.message || '修改失败')
+  } finally {
+    submittingPassword.value = false
+  }
 }
 
 onMounted(async () => {

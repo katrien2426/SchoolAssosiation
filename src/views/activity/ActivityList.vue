@@ -1,7 +1,10 @@
 <template>
   <div class="activity-container">
     <div class="toolbar">
-      <el-button type="primary" :icon="Plus" @click="handleAdd">新增活动</el-button>
+      <!-- 修改添加按钮的显示逻辑 -->
+      <el-button type="primary" :icon="Plus" @click="handleAdd" v-if="isAdmin || isClubPresident">
+        新增活动
+      </el-button>
 
       <div class="filter-section">
         <el-input v-model="searchForm.activityName" placeholder="请输入活动名称" clearable style="width: 200px">
@@ -38,20 +41,20 @@
     <el-card class="table-card" shadow="never">
       <el-table :data="activities.slice((currentPage - 1) * pageSize, currentPage * pageSize)" border style="width: 100%" v-loading="loading"
         :header-cell-style="{ background: '#f5f7fa' }">
-        <el-table-column prop="activityName" label="活动名称" />
-        <el-table-column prop="clubName" label="举办社团" />
-        <el-table-column prop="location" label="活动地点" />
-        <el-table-column prop="startDate" label="开始时间">
+        <el-table-column prop="activityName" label="活动名称" style width="130"/>
+        <el-table-column prop="clubName" label="举办社团" style width="100"/>
+        <el-table-column prop="location" label="活动地点" style width="100"/>
+        <el-table-column prop="startDate" label="开始时间" style width="100">
           <template #default="scope">
             {{ formatDate(scope.row.startDate) }}
           </template>
         </el-table-column>
-        <el-table-column prop="endDate" label="结束时间">
+        <el-table-column prop="endDate" label="结束时间" style width="100">
           <template #default="scope">
             {{ formatDate(scope.row.endDate) }}
           </template>
         </el-table-column>
-        <el-table-column prop="status" label="状态" width="120">
+        <el-table-column prop="status" label="状态" width="90">
           <template #default="scope">
             <el-tag :type="getStatusType(scope.row.status)">
               {{ getStatusText(scope.row.status) }}
@@ -69,35 +72,35 @@
         <el-table-column label="操作" width="350">
           <template #default="{ row }">
             <el-button-group>
-              <template v-if="row.status === 'draft'">
-                <el-button type="primary" @click="handleSubmitDraft(row)" size="small">
+              <template v-if="row.status === 'draft' && canManageActivity(row)">
+                <el-button type="primary" @click="handleSubmitDraft(row)">
                   提交
                 </el-button>
-                <el-button type="primary" :icon="Edit" @click="handleEdit(row)" size="small">
+                <el-button type="primary" :icon="Edit" @click="handleEdit(row)">
                   编辑
                 </el-button>
-                <el-button type="danger" :icon="Delete" @click="handleDelete(row)" size="small">
+                <el-button type="danger" :icon="Delete" @click="handleDelete(row)">
                   删除
                 </el-button>
               </template>
               <template v-else-if="row.status === 'pending' && isAdmin">
-                <el-button type="success" @click="handleApprove(row)" size="small">
+                <el-button type="success" @click="handleApprove(row)">
                   通过
                 </el-button>
-                <el-button type="danger" @click="handleReject(row)" size="small">
+                <el-button type="danger" @click="handleReject(row)">
                   拒绝
                 </el-button>
               </template>
-              <template v-else>
-                <el-button type="primary" :icon="Edit" @click="handleEdit(row)" size="small">
+              <template v-else-if="canManageActivity(row)">
+                <el-button type="primary" :icon="Edit" @click="handleEdit(row)">
                   编辑
                 </el-button>
-                <el-button type="danger" :icon="Delete" @click="handleDelete(row)" size="small">
+                <el-button type="danger" :icon="Delete" @click="handleDelete(row)">
                   删除
                 </el-button>
               </template>
-              <el-button type="info" @click="handleViewAuditLogs(row)" size="small">
-                查看审核记录
+              <el-button type="info" @click="handleViewAuditLogs(row)" v-if="canManageActivity(row)">
+                审核记录
               </el-button>
             </el-button-group>
           </template>
@@ -117,14 +120,23 @@
     </el-card>
 
     <!-- 活动表单对话框 -->
-    <el-dialog v-model="dialogVisible" :title="form.activityId ? '编辑活动' : '新增活动'" width="500px">
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="100px" style="max-width: 460px">
+    <el-dialog v-model="dialogVisible" :title="form.activityId ? '编辑活动' : '新增活动'" width="700px">
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="120px" style="max-width: 650px">
         <el-form-item label="活动名称" prop="activityName">
           <el-input v-model="form.activityName" />
         </el-form-item>
         <el-form-item label="举办社团" prop="clubId">
-          <el-select v-model="form.clubId" placeholder="请选择社团">
-            <el-option v-for="club in clubs" :key="club.clubId" :label="club.clubName" :value="club.clubId" />
+          <el-select 
+            v-model="form.clubId" 
+            placeholder="请选择社团"
+            :disabled="currentUserRole === 'club_president'"
+          >
+            <el-option 
+              v-for="club in filteredClubs" 
+              :key="club.clubId" 
+              :label="club.clubName" 
+              :value="club.clubId" 
+            />
           </el-select>
         </el-form-item>
         <el-form-item label="活动地点" prop="location">
@@ -208,6 +220,8 @@ import { useUserStore } from '@/stores/user'
 import dayjs from 'dayjs'
 
 const userStore = useUserStore()
+const currentUserRole = computed(() => userStore.userInfo?.role)
+const currentUserId = computed(() => userStore.userInfo?.userId)
 const activities = ref([])
 const clubs = ref([])
 const loading = ref(false)
@@ -260,15 +274,58 @@ const isAdmin = computed(() => {
   return userStore.isAdmin
 })
 
+const isClubPresident = computed(() => {
+  // 直接从 store 获取角色判断
+  const role = userStore.userInfo?.role
+  const isPresident = role === 'club_president'
+  console.log('Club president check:', { role, isPresident })
+  return isPresident
+})
+
+const filteredClubs = computed(() => {
+  if (currentUserRole.value === 'club_president') {
+    return clubs.value.filter(club => String(club.presidentId) === String(currentUserId.value))
+  }
+  return clubs.value
+})
+
+const canManageActivity = (activity) => {
+  // 管理员可以管理所有活动
+  if (userStore.isAdmin) return true
+  
+  // 社长只能管理自己社团的活动
+  if (isClubPresident.value) {
+    const currentUserId = userStore.user?.userId
+
+    // 如果是新增活动，检查用户是否是某个社团的社长
+    if (!activity) {
+      // 需要检查clubs列表中是否有当前用户作为社长的社团
+      return clubs.value.some(club => String(club.presidentId) === String(currentUserId))
+    }
+
+    // 如果是已有活动，先找到对应的社团
+    const club = clubs.value.find(c => String(c.clubId) === String(activity.clubId))
+    if (!club) return false
+
+    // 检查用户是否是该社团的社长
+    return String(club.presidentId) === String(currentUserId)
+  }
+  
+  return false
+}
+
 const handleSearch = () => {
+  currentPage.value = 1  // 搜索时重置到第一页
   fetchActivities()
 }
 
-const handleReset = () => {
+const resetFilter = () => {  // 更改方法名以匹配模板中的调用
   searchForm.value = {
     activityName: '',
     status: ''
   }
+  currentPage.value = 1  // 重置到第一页
+  pageSize.value = 10   // 重置每页显示条数
   fetchActivities()
 }
 
@@ -276,15 +333,31 @@ const fetchActivities = async () => {
   try {
     loading.value = true
     const token = localStorage.getItem('token')
-    const response = await axios.get('/api/activities', {
+    
+    let url = '/api/activities'
+    let params = {}
+    
+    if (searchForm.value.activityName) {
+      params.activityName = searchForm.value.activityName
+    }
+    
+    if (searchForm.value.status) {
+      if (searchForm.value.activityName) {
+        // 如果同时有活动名称和状态，使用原来的接口
+        params.status = searchForm.value.status
+      } else {
+        // 如果只有状态，使用新的状态查询接口
+        url = `/api/activities/status/${searchForm.value.status}`
+      }
+    }
+    
+    const response = await axios.get(url, {
       headers: {
         'Authorization': `Bearer ${token}`
       },
-      params: {
-        activityName: searchForm.value.activityName,
-        status: searchForm.value.status
-      }
+      params
     })
+    
     if (response.data.code === 200) {
       activities.value = response.data.data
     }
@@ -306,6 +379,7 @@ const fetchClubs = async () => {
     })
     if (response.data.code === 200) {
       clubs.value = response.data.data
+      console.log('Fetched clubs:', clubs.value)
     }
   } catch (error) {
     console.error('获取社团列表失败:', error)
@@ -314,6 +388,15 @@ const fetchClubs = async () => {
 }
 
 const handleAdd = () => {
+  const userClub = currentUserRole.value === 'club_president' 
+    ? clubs.value.find(club => String(club.presidentId) === String(currentUserId.value))
+    : null
+
+  if (currentUserRole.value === 'club_president' && !userClub) {
+    ElMessage.warning('你没有管理的社团，无法添加活动')
+    return
+  }
+
   form.value = {
     activityId: null,
     activityName: '',
@@ -321,21 +404,38 @@ const handleAdd = () => {
     dateRange: [],
     location: '',
     maxParticipants: 30,
-    clubId: null,
+    clubId: userClub ? userClub.clubId : null,
     status: 'draft'
   }
   dialogVisible.value = true
 }
 
 const handleEdit = (row) => {
+  if (currentUserRole.value === 'club_president') {
+    const userClub = clubs.value.find(club => 
+      String(club.presidentId) === String(currentUserId.value))
+    if (!userClub || row.clubId !== userClub.clubId) {
+      ElMessage.warning('你只能编辑自己社团的活动')
+      return
+    }
+  }
+  
   form.value = {
     ...row,
-    dateRange: [new Date(row.startDate), new Date(row.endDate)]
+    // 在设置日期时添加8小时的时区调整
+    dateRange: [
+      dayjs(row.startDate).add(8, 'hour').toDate(),
+      dayjs(row.endDate).add(8, 'hour').toDate()
+    ]
   }
   dialogVisible.value = true
 }
 
 const handleDelete = async (row) => {
+  if (!canManageActivity(row)) {
+    ElMessage.warning('你只能删除自己社团的活动')
+    return
+  }
   try {
     await ElMessageBox.confirm('确定要删除该活动吗？', '提示', {
       type: 'warning'
@@ -541,6 +641,10 @@ const auditLogsDialogVisible = ref(false)
 const auditLogs = ref([])
 
 const handleViewAuditLogs = async (row) => {
+  if (!canManageActivity(row)) {
+    ElMessage.warning('你只能查看自己社团活动的审核记录')
+    return
+  }
   try {
     const token = localStorage.getItem('token')
     const response = await axios.get(`/api/activities/${row.activityId}/audit-logs`, {
@@ -578,13 +682,12 @@ const handleCurrentChange = (val) => {
   currentPage.value = val
 }
 
-onMounted(() => {
-  // 确保用户信息已加载
+onMounted(async () => {
   if (!userStore.user) {
-    userStore.init()
+    await userStore.init()
   }
-  fetchActivities()
-  fetchClubs()
+  await fetchClubs() // 先获取社团列表
+  fetchActivities() // 再获取活动列表
 })
 </script>
 

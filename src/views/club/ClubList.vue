@@ -1,7 +1,7 @@
 <template>
   <div class="club-container">
     <div class="toolbar">
-      <el-button type="primary" @click="handleAdd">
+      <el-button type="primary" @click="handleAdd" v-if="isAdmin">
         <el-icon>
           <Plus />
         </el-icon>新增社团
@@ -61,17 +61,17 @@
         <el-table-column label="操作" width="300">
           <template #default="scope">
             <el-button-group>
-              <el-button type="primary" @click="handleEdit(scope.row)">
+              <el-button type="primary" @click="handleEdit(scope.row)" v-if="canEdit(scope.row)">
                 <el-icon>
                   <Edit />
                 </el-icon>编辑
               </el-button>
-              <el-button type="success" @click="handleMembers(scope.row)">
+              <el-button type="success" @click="handleMembers(scope.row)" v-if="canManageMembers(scope.row)">
                 <el-icon>
                   <User />
                 </el-icon>成员管理
               </el-button>
-              <el-button type="danger" @click="handleDelete(scope.row)">
+              <el-button type="danger" @click="handleDelete(scope.row)" v-if="canDelete(scope.row)">
                 <el-icon>
                   <Delete />
                 </el-icon>删除
@@ -104,8 +104,8 @@
           <el-input v-model="clubForm.description" type="textarea" :rows="4" />
         </el-form-item>
         <el-form-item label="成立日期" prop="creationDate">
-          <el-date-picker v-model="clubForm.creationDate" type="datetime" placeholder="选择日期时间"
-            format="YYYY-MM-DD HH:mm:ss" value-format="YYYY-MM-DDTHH:mm:ss.SSS" />
+          <el-date-picker v-model="clubForm.creationDate" type="date" placeholder="选择日期"
+            format="YYYY-MM-DD" value-format="YYYY-MM-DD" />
         </el-form-item>
         <el-form-item label="社长" prop="presidentId">
           <el-select v-model="clubForm.presidentId" placeholder="请选择社长" clearable>
@@ -173,16 +173,21 @@
       <div class="search-box">
         <el-form :inline="true" :model="searchForm" class="demo-form-inline">
           <el-form-item label="姓名">
-            <el-input v-model="searchForm.name" placeholder="输入姓名搜索" clearable />
+            <el-input v-model="searchForm.name" placeholder="请输入姓名" clearable style = "width: 120px"/>
           </el-form-item>
           <el-form-item label="学号">
-            <el-input v-model="searchForm.studentId" placeholder="输入学号搜索" clearable />
+            <el-input v-model="searchForm.studentId" placeholder="请输入学号" clearable style="width: 120px;"/>
           </el-form-item>
           <el-form-item label="角色">
             <el-select v-model="searchForm.role" placeholder="选择角色" clearable style="width: 120px">
-              <el-option label="社长" value="社长" />
               <el-option label="副社长" value="副社长" />
               <el-option label="普通成员" value="普通成员" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="状态">
+            <el-select v-model="searchForm.status" placeholder="选择状态" clearable style="width: 120px">
+              <el-option label="在职" value="active" />
+              <el-option label="离职" value="inactive" />
             </el-select>
           </el-form-item>
           <el-form-item>
@@ -258,7 +263,6 @@
           </el-form-item>
           <el-form-item label="角色" prop="role">
             <el-select v-model="memberForm.role">
-              <el-option label="社长" value="社长" />
               <el-option label="副社长" value="副社长" />
               <el-option label="普通成员" value="普通成员" />
             </el-select>
@@ -289,7 +293,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Edit, Delete, Search, User, Upload, Download, Refresh } from '@element-plus/icons-vue'
 import axios from '../../utils/axios'
@@ -387,7 +391,8 @@ const memberRules = {
 const searchForm = ref({
   name: '',
   studentId: '',
-  role: ''
+  role: '',
+  status: ''  // 添加状态字段
 })
 
 // 分页相关
@@ -411,15 +416,26 @@ const fetchPresidents = async () => {
   }
 }
 
-// 获取社团列表
+// 修改 fetchClubs 方法
 const fetchClubs = async () => {
   loading.value = true
   try {
-    const response = await axios.get('/api/clubs', {
-      params: filter.value
+    let url = '/api/clubs'
+    // 如果有任何筛选条件，使用搜索接口
+    if (filter.value.keyword || filter.value.status) {
+      url = '/api/clubs/search'
+    }
+    const response = await axios.get(url, {
+      params: {
+        keyword: filter.value.keyword || null,
+        status: filter.value.status || null
+      }
     })
     if (response.data.code === 200) {
+      // 移除这里的过滤，直接使用服务器返回的数据
       clubs.value = response.data.data
+      console.log('获取到的社团列表:', clubs.value)
+      console.log('当前用户信息:', userStore.user)
     }
   } catch (error) {
     console.error('获取社团列表失败:', error)
@@ -427,6 +443,15 @@ const fetchClubs = async () => {
   } finally {
     loading.value = false
   }
+}
+
+// 重置筛选
+const resetFilter = () => {
+  filter.value = {
+    keyword: '',
+    status: ''
+  }
+  fetchClubs()
 }
 
 // 处理过滤
@@ -448,18 +473,27 @@ const handleAdd = () => {
   dialogVisible.value = true
 }
 
-// 处理编辑
+// 修改处理编辑
 const handleEdit = (row) => {
+  if (!canEdit(row)) {
+    ElMessage.warning('你没有权限编辑此社团')
+    return
+  }
   editingClub.value = row
   clubForm.value = {
     ...row,
-    presidentId: row.presidentId
+    presidentId: row.presidentId,
+    creationDate: formatDate(row.creationDate)
   }
   dialogVisible.value = true
 }
 
 // 处理删除
 const handleDelete = (row) => {
+  if (!canDelete(row)) {
+    ElMessage.warning('你没有权限删除社团')
+    return
+  }
   ElMessageBox.confirm(
     `确定要删除社团"${row.clubName}"吗？`,
     '警告',
@@ -517,6 +551,10 @@ const handleSubmit = async () => {
 
 // 处理成员管理
 const handleMembers = (club) => {
+  if (!canManageMembers(club)) {
+    ElMessage.warning('你没有权限管理此社团的成员')
+    return
+  }
   currentClub.value = club
   memberDialogVisible.value = true
   fetchMembers(club.clubId)
@@ -554,6 +592,11 @@ const handleAddMember = () => {
 
 // 处理编辑成员
 const handleEditMember = (member) => {
+  // 如果是社长，不允许编辑
+  if (member.role === '社长') {
+    ElMessage.warning('社长信息需要在社团基本信息中修改')
+    return
+  }
   editingMember.value = member
   memberForm.value = { ...member }
   memberFormDialogVisible.value = true
@@ -561,6 +604,11 @@ const handleEditMember = (member) => {
 
 // 处理删除成员
 const handleDeleteMember = (member) => {
+  // 如果是社长，不允许删除
+  if (member.role === '社长') {
+    ElMessage.warning('社长信息需要在社团基本信息中修改')
+    return
+  }
   ElMessageBox.confirm(
     `确定要删除成员"${member.name}"吗？`,
     '警告',
@@ -722,24 +770,34 @@ const handleDownloadTemplate = async () => {
   }
 }
 
-// 搜索方法
+// 修改搜索方法
 const handleSearch = async () => {
   if (!currentClub.value) return
 
   try {
-    const params = new URLSearchParams()
-    if (searchForm.value.name) params.append('name', searchForm.value.name)
-    if (searchForm.value.studentId) params.append('studentId', searchForm.value.studentId)
-    if (searchForm.value.role) params.append('role', searchForm.value.role)
+    const params = {
+      name: searchForm.value.name || '',
+      studentId: searchForm.value.studentId || '',
+      role: searchForm.value.role || '',
+      status: searchForm.value.status || ''
+    }
+    
+    console.log('请求参数:', params)  // 添加日志
+    console.log('当前社团ID:', currentClub.value.clubId)  // 添加日志
 
-    const response = await axios.get(`/api/members/search/${currentClub.value.clubId}?${params.toString()}`)
+    const response = await axios.get(`/api/members/search/${currentClub.value.clubId}`, {
+      params: params
+    })
+
+    console.log('搜索响应:', response.data)  // 添加日志
+    
     if (response.data.code === 200) {
       members.value = response.data.data
     } else {
       ElMessage.error(response.data.message || '搜索失败')
     }
   } catch (error) {
-    console.error('搜索失败:', error)
+    console.error('搜索失败:', error.response || error)  // 修改错误日志
     ElMessage.error('搜索失败')
   }
 }
@@ -749,14 +807,19 @@ const resetSearch = () => {
   searchForm.value = {
     name: '',
     studentId: '',
-    role: ''
+    role: '',
+    status: ''  // 添加状态字段的重置
   }
   fetchMembers(currentClub.value.clubId)
 }
 
 const formatDate = (date) => {
   if (!date) return ''
-  return new Date(date).toLocaleString()
+  const dateObj = new Date(date)
+  const year = dateObj.getFullYear()
+  const month = String(dateObj.getMonth() + 1).padStart(2, '0')
+  const day = String(dateObj.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 // 监听对话框关闭
@@ -787,6 +850,49 @@ const handleMemberSizeChange = (val) => {
 
 const handleMemberCurrentChange = (val) => {
   memberCurrentPage.value = val
+}
+
+// 添加用户权限相关的计算属性
+const isAdmin = computed(() => {
+  const isAdmin = userStore.userInfo?.role === 'admin'
+  console.log('Admin check:', { role: userStore.userInfo?.role, isAdmin })
+  return isAdmin
+})
+
+const isClubPresident = computed(() => {
+  // 直接从 store 获取角色判断
+  const role = userStore.userInfo?.role
+  const isPresident = role === 'club_president'
+  console.log('Club president check:', { role, isPresident })
+  return isPresident
+})
+
+// 权限控制方法
+const canEdit = (club) => {
+  console.log('权限检查详情:', {
+    currentUserRole: userStore.userInfo?.role,
+    isAdmin: isAdmin.value,
+    isClubPresident: isClubPresident.value,
+    currentUserId: userStore.userInfo?.userId,
+    clubPresidentId: club.presidentId,
+    match: String(club.presidentId) === String(userStore.userInfo?.userId)
+  })
+  
+  if (isAdmin.value) return true
+  // 先判断是否是社长，再比较ID
+  if (userStore.userInfo?.role === 'club_president') {
+    return String(club.presidentId) === String(userStore.userInfo?.userId)
+  }
+  return false
+}
+
+const canManageMembers = (club) => {
+  return canEdit(club)
+}
+
+const canDelete = (club) => {
+  // 只有管理员可以删除社团
+  return isAdmin.value
 }
 
 onMounted(() => {

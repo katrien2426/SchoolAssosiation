@@ -1,10 +1,9 @@
 <template>
   <div class="honor-container">
     <div class="toolbar">
-      <el-button type="primary" @click="handleAdd">
-        <el-icon>
-          <Plus />
-        </el-icon>新增荣誉
+      <!-- 只有管理员或社长可以看到新增按钮 -->
+      <el-button v-if="canAdd" type="primary" @click="handleAdd">
+        <el-icon><Plus /></el-icon>新增荣誉
       </el-button>
 
       <div class="filter-section">
@@ -68,7 +67,7 @@
         </el-table-column>
         <el-table-column label="操作" width="200">
           <template #default="scope">
-            <el-button-group>
+            <el-button-group v-if="canManageHonor(scope.row)">
               <el-button type="primary" @click="handleEdit(scope.row)" :icon="Edit">
                 编辑
               </el-button>
@@ -98,8 +97,17 @@
             <el-input v-model="form.honorName" />
           </el-form-item>
           <el-form-item label="获奖社团" prop="clubId">
-            <el-select v-model="form.clubId" placeholder="请选择社团">
-              <el-option v-for="club in clubs" :key="club.clubId" :label="club.clubName" :value="club.clubId" />
+            <el-select 
+              v-model="form.clubId" 
+              placeholder="请选择社团" 
+              :disabled="currentUserRole === 'club_president'"
+            >
+              <el-option 
+                v-for="club in currentUserRole === 'club_president' ? clubs.filter(c => c.clubId === userClubId) : clubs" 
+                :key="club.clubId" 
+                :label="club.clubName" 
+                :value="club.clubId" 
+              />
             </el-select>
           </el-form-item>
           <el-form-item label="荣誉级别" prop="honorLevel">
@@ -144,11 +152,12 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Edit, Delete, Search, Refresh } from '@element-plus/icons-vue'
 import axios from '../../utils/axios'
 import dayjs from 'dayjs'
+import { useUserStore } from '../../stores/user'
 
 const honors = ref([])
 const loading = ref(false)
@@ -158,42 +167,18 @@ const formRef = ref()
 const clubs = ref([])
 const descriptionDialogVisible = ref(false)
 const currentDescription = ref('')
-
-const form = ref({
-  honorId: '',
-  honorName: '',
-  clubId: '',
-  honorLevel: '',
-  awardTime: '',
-  issuingAuthority: '',
-  description: ''
-})
-
-const rules = {
-  honorName: [
-    { required: true, message: '请输入荣誉名称', trigger: 'blur' }
-  ],
-  clubId: [
-    { required: true, message: '请选择获奖社团', trigger: 'change' }
-  ],
-  honorLevel: [
-    { required: true, message: '请选择荣誉级别', trigger: 'change' }
-  ],
-  awardTime: [
-    { required: true, message: '请选择获奖时间', trigger: 'change' }
-  ],
-  issuingAuthority: [
-    { required: true, message: '请输入颁发单位', trigger: 'blur' }
-  ]
-}
-
+const userClubId = ref(null)
 const searchQuery = ref('')
 const searchLevel = ref('')
 const searchClub = ref('')
-
 const currentPage = ref(1)
 const pageSize = ref(10)
 
+const userStore = useUserStore()
+const currentUserRole = computed(() => userStore.userInfo.role)
+const currentUserId = computed(() => userStore.userInfo.userId)
+
+// 获取荣誉列表
 const fetchHonors = async () => {
   loading.value = true
   try {
@@ -225,11 +210,70 @@ const fetchClubs = async () => {
   }
 }
 
+// 获取用户所属社团ID（如果是社长）
+const fetchUserClubId = async () => {
+  try {
+    const res = await axios.get('/api/clubs')
+    if (res.data.code === 200) {
+      const userClub = res.data.data.find(club => club.presidentId === currentUserId.value)
+      if (userClub) {
+        userClubId.value = userClub.clubId
+      }
+    }
+  } catch (error) {
+    console.error('获取社团信息失败:', error)
+  }
+}
+
+const form = ref({
+  honorId: '',
+  honorName: '',
+  clubId: '',
+  honorLevel: '',
+  awardTime: '',
+  issuingAuthority: '',
+  description: ''
+})
+
+const rules = {
+  honorName: [
+    { required: true, message: '请输入荣誉名称', trigger: 'blur' }
+  ],
+  clubId: [
+    { required: true, message: '请选择获奖社团', trigger: 'change' }
+  ],
+  honorLevel: [
+    { required: true, message: '请选择荣誉级别', trigger: 'change' }
+  ],
+  awardTime: [
+    { required: true, message: '请选择获奖时间', trigger: 'change' }
+  ],
+  issuingAuthority: [
+    { required: true, message: '请输入颁发单位', trigger: 'blur' }
+  ]
+}
+
+// 判断是否可以新增荣誉
+const canAdd = computed(() => {
+  return currentUserRole.value === 'admin' || 
+         (currentUserRole.value === 'club_president' && userClubId.value)
+})
+
+// 判断是否可以管理某个荣誉
+const canManageHonor = (honor) => {
+  if (currentUserRole.value === 'admin') return true
+  if (currentUserRole.value === 'club_president') {
+    return honor.clubId === userClubId.value
+  }
+  return false
+}
+
+// 修改handleAdd方法，社长角色时强制设置社团
 const handleAdd = () => {
   form.value = {
     honorId: '',
     honorName: '',
-    clubId: '',
+    clubId: currentUserRole.value === 'club_president' ? userClubId.value : '',
     honorLevel: '',
     awardTime: '',
     issuingAuthority: '',
@@ -238,7 +282,12 @@ const handleAdd = () => {
   dialogVisible.value = true
 }
 
+// 修改handleEdit方法，确保社长只能编辑自己社团的荣誉
 const handleEdit = (row) => {
+  if (currentUserRole.value === 'club_president' && row.clubId !== userClubId.value) {
+    ElMessage.error('您只能编辑本社团的荣誉')
+    return
+  }
   form.value = { ...row }
   dialogVisible.value = true
 }
@@ -319,9 +368,17 @@ const handleSearch = async () => {
   }
 }
 
+const resetFilter = () => {
+  searchQuery.value = ''
+  searchLevel.value = ''
+  searchClub.value = ''
+  handleSearch()
+}
+
+// 修改日期格式化方法
 const formatDate = (date) => {
   if (!date) return ''
-  return new Date(date).toLocaleString()
+  return dayjs(date).format('YYYY-MM-DD')
 }
 
 const getLevelType = (level) => {
@@ -355,6 +412,9 @@ const handleCurrentChange = (val) => {
 onMounted(() => {
   fetchHonors()
   fetchClubs()
+  if (currentUserRole.value === 'club_president') {
+    fetchUserClubId()
+  }
 })
 </script>
 
