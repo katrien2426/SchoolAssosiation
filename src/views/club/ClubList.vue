@@ -420,28 +420,22 @@ const fetchPresidents = async () => {
 const fetchClubs = async () => {
   loading.value = true
   try {
-    let url = '/api/clubs'
-    // 如果有任何筛选条件，使用搜索接口
-    if (filter.value.keyword || filter.value.status) {
-      url = '/api/clubs/search'
-    }
-    const response = await axios.get(url, {
+    const response = await axios.get('/api/clubs/search', {
       params: {
         keyword: filter.value.keyword || null,
         status: filter.value.status || null
       }
-    })
+    });
+
     if (response.data.code === 200) {
-      // 移除这里的过滤，直接使用服务器返回的数据
-      clubs.value = response.data.data
-      console.log('获取到的社团列表:', clubs.value)
-      console.log('当前用户信息:', userStore.user)
+      clubs.value = response.data.data;
+      console.log('获取到的社团列表:', clubs.value);
     }
   } catch (error) {
-    console.error('获取社团列表失败:', error)
-    ElMessage.error('获取社团列表失败')
+    console.error('获取社团列表失败:', error);
+    ElMessage.error('获取社团列表失败');
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
 
@@ -948,7 +942,7 @@ onMounted(() => {
 }
 
 :deep(.el-table) {
-  margin-top: 20px;
+  margin-top: 10px; 
 }
 
 :deep(.el-form-item) {

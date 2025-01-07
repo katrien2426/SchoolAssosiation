@@ -581,6 +581,11 @@ const getClubName = (clubId) => {
   white-space: nowrap;
 }
 
+:deep(.el-table) {
+  margin-top: 10px; 
+}
+
+
 .selected-option {
   margin-top: 5px;
   color: #409EFF;

@@ -47,11 +47,7 @@
             登录
           </el-button>
         </el-form-item>
-
-        <div class="login-footer">
-          <span>还没有账号？</span>
-          <el-link type="primary" @click="router.push('/register')">立即注册</el-link>
-        </div>
+        <!-- 移除注册相关代码 -->
       </el-form>
 
       <div class="login-decoration">
@@ -170,7 +166,7 @@ const handleLogin = async () => {
 
 .login-button {
   width: 100%;
-  margin-top: 16px;
+  margin-top: 24px; /* 调整按钮上边距 */
   height: 44px;
   font-size: 16px;
   letter-spacing: 1px;

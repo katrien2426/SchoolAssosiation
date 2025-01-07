@@ -446,6 +446,11 @@ onMounted(() => {
   gap: 10px;
 }
 
+:deep(.el-table) {
+  margin-top: 10px; 
+}
+
+
 .pagination-container {
   margin-top: 20px;
   display: flex;

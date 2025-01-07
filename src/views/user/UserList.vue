@@ -8,7 +8,7 @@
       </el-button>
 
       <div class="filter-section">
-      <el-input v-model="filter.keyword" placeholder="请输入用户名" clearable @keyup.enter="handleFilter" style="width: 200px;">
+      <el-input v-model="searchForm.keyword" placeholder="请输入用户名" clearable @keyup.enter="handleSearch" style="width: 200px;">
         <template #prefix>
           <el-icon>
             <Search />
@@ -16,17 +16,17 @@
         </template>
       </el-input>
 
-      <el-select v-model="filter.role" placeholder="角色" clearable style="width: 120px;">
+      <el-select v-model="searchForm.role" placeholder="角色" clearable style="width: 120px;">
         <el-option label="管理员" value="admin" />
         <el-option label="社长" value="club_president" />
       </el-select>
 
-      <el-button type="primary" @click="handleFilter">
+      <el-button type="primary" @click="handleSearch">
         <el-icon>
           <Search />
         </el-icon>查询
       </el-button>
-      <el-button @click="resetFilter">
+      <el-button @click="resetForm">
         <el-icon>
           <Refresh />
         </el-icon>重置
@@ -170,7 +170,7 @@ const handleCurrentChange = (val) => {
 // 获取社团列表
 const fetchClubs = async () => {
   try {
-    const response = await axios.get('/api/clubs/active')
+    const response = await axios.get('/api/clubs')
     if (response.data.code === 200) {
       clubs.value = response.data.data
       console.log('获取到的社团列表:', clubs.value)
@@ -277,7 +277,7 @@ const fetchUsers = async () => {
     if (filter.value.role) {
       params.role = filter.value.role
     }
-    const response = await axios.get('/api/users', { params })
+    const response = await axios.get('/api/users/search', { params })
     if (response.data.code === 200) {
       users.value = Array.isArray(response.data.data) ? response.data.data : []
     }
@@ -363,54 +363,46 @@ const handleDelete = (row) => {
 const handleSubmit = async () => {
   if (!userFormRef.value) return
 
-  await userFormRef.value.validate(async (valid) => {
-    if (valid) {
-      try {
-        const formData = { ...userForm.value }
-
-        // 处理空字符串
-        if (!formData.phone) {
-          delete formData.phone
-        }
-
-        // 如果不是社长，删除 clubId
-        if (formData.role !== 'club_president') {
-          formData.clubId = null
-        }
-
-        // 确保密码字段正确
-        if (!editingUser.value && formData.password) {
-          // 对于新用户，使用password字段
-          formData.password = formData.password
-        } else {
-          // 编辑时不发送密码字段
-          delete formData.password
-        }
-
-        // 处理日期字段
-        formData.createdAt = new Date().toISOString()
-
-        const url = editingUser.value
-          ? `/api/users/${editingUser.value.userId}`
-          : '/api/users/register'
-        const method = editingUser.value ? 'put' : 'post'
-
-        console.log('Sending form data:', formData)
-        const response = await axios[method](url, formData)
-
-        if (response.data.code === 200) {
-          ElMessage.success(`${editingUser.value ? '编辑' : '新增'}成功`)
-          dialogVisible.value = false
-          fetchUsers()
-        } else {
-          ElMessage.error(response.data.message || `${editingUser.value ? '编辑' : '新增'}失败`)
-        }
-      } catch (error) {
-        console.error(`${editingUser.value ? '编辑' : '新增'}用户失败:`, error)
-        ElMessage.error(error.response?.data?.message || `${editingUser.value ? '编辑' : '新增'}失败`)
-      }
+  try {
+    await userFormRef.value.validate()
+    
+    const formData = { ...userForm.value }
+    
+    // 处理特殊字段
+    if (!formData.phone?.trim()) delete formData.phone
+    if (formData.role !== 'club_president') formData.clubId = null
+    if (!editingUser.value) {
+      delete formData.createdAt
     }
-  })
+    
+    const url = editingUser.value 
+      ? `/api/users/${editingUser.value.userId}`
+      : '/api/users/register'
+    const method = editingUser.value ? 'put' : 'post'
+
+    const response = await axios[method](url, formData)
+
+    if (response.data.code === 200) {
+      ElMessage.success(`${editingUser.value ? '编辑' : '新增'}成功`)
+      dialogVisible.value = false
+      await fetchUsers()
+    } else {
+      ElMessage.error(response.data.message || `操作失败`)
+    }
+  } catch (error) {
+    console.error('表单提交失败:', error)
+    ElMessage.error(error.response?.data?.message || '操作失败')
+  }
+}
+
+// 优化的重置方法
+const resetForm = () => {
+  searchForm.value = {
+    keyword: '',
+    role: ''
+  }
+  currentPage.value = 1
+  handleSearch()
 }
 
 const formatDate = (date) => {
@@ -422,6 +414,34 @@ onMounted(() => {
   fetchUsers()
   fetchClubs()
 })
+
+// 修改搜索表单数据的类型定义
+const searchForm = ref({
+  keyword: '',  // 确保是字符串类型
+  role: ''      // 确保是字符串类型，不是数字类型
+})
+
+// 修改搜索方法
+const handleSearch = async () => {
+  loading.value = true
+  try {
+    const params = {
+      keyword: searchForm.value.keyword || undefined,
+      role: searchForm.value.role || undefined
+    }
+    const response = await axios.get('/api/users/search', { params })
+    if (response.data.code === 200) {
+      users.value = response.data.data
+    } else {
+      ElMessage.error(response.data.message || '搜索失败')
+    }
+  } catch (error) {
+    console.error('搜索失败:', error)
+    ElMessage.error(error.response?.data?.message || '搜索失败')
+  } finally {
+    loading.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -461,6 +481,11 @@ onMounted(() => {
 .custom-pagination :deep(.el-select) {
   width: 100px !important;
 }
+
+:deep(.el-table) {
+  margin-top: 10px; 
+}
+
 
 .custom-pagination :deep(.el-input__wrapper) {
   width: 100px !important;

@@ -39,8 +39,13 @@
     </div>
 
     <el-card class="table-card" shadow="never">
-      <el-table :data="activities.slice((currentPage - 1) * pageSize, currentPage * pageSize)" border style="width: 100%" v-loading="loading"
-        :header-cell-style="{ background: '#f5f7fa' }">
+      <el-table 
+        :data="activities.slice((currentPage - 1) * pageSize, currentPage * pageSize)" 
+        class="custom-table"
+        style="width: 100%" 
+        v-loading="loading"
+        :header-cell-style="{ background: '#f5f7fa' }"
+      >
         <el-table-column prop="activityName" label="活动名称" style width="130"/>
         <el-table-column prop="clubName" label="举办社团" style width="100"/>
         <el-table-column prop="location" label="活动地点" style width="100"/>
@@ -736,5 +741,34 @@ onMounted(async () => {
   margin-top: 20px;
   display: flex;
   justify-content: flex-end;
+}
+
+.custom-table {
+  border: none;
+}
+
+:deep(.el-table) {
+  margin-top: 10px; 
+}
+
+.custom-table :deep(.el-table__inner-wrapper::before) {
+  display: none;
+}
+
+.custom-table :deep(.el-table__border-left),
+.custom-table :deep(.el-table__border-right),
+.custom-table :deep(.el-table__border-top),
+.custom-table :deep(.el-table__border-bottom) {
+  display: none;
+}
+
+.custom-table :deep(td.el-table__cell:first-child),
+.custom-table :deep(th.el-table__cell:first-child) {
+  border-left: none;
+}
+
+.custom-table :deep(td.el-table__cell:last-child),
+.custom-table :deep(th.el-table__cell:last-child) {
+  border-right: none;
 }
 </style>

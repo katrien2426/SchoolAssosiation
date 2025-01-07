@@ -208,6 +208,12 @@ html, body {
   color: #606266;
   font-size: 14px;
   gap: 4px;
+  &:hover {
+    background-color: transparent;  /* 移除悬停时的背景色 */
+  }
+  &:focus {
+    outline: none;  /* 移除点击时的轮廓 */
+  }
 }
 
 .el-dropdown-menu__item {
