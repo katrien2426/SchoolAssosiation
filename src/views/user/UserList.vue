@@ -53,6 +53,16 @@
             {{ formatDate(scope.row.createdAt) }}
           </template>
         </el-table-column>
+        <el-table-column label="所属社团">
+          <template #default="scope">
+            <template v-if="scope.row.role === 'club_president'">
+              {{ getClubName(scope.row.clubId) }}
+            </template>
+            <template v-else>
+              -
+            </template>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="250">
           <template #default="scope">
             <el-button-group>
@@ -106,8 +116,17 @@
             </el-select>
           </el-form-item>
           <el-form-item label="所属社团" prop="clubId" v-if="userForm.role === 'club_president'">
-            <el-select v-model="userForm.clubId" placeholder="请选择社团" @change="userFormRef?.clearValidate('clubId')">
-              <el-option v-for="club in clubs" :key="club.clubId" :label="club.clubName" :value="club.clubId" />
+            <el-select 
+              v-model="userForm.clubId" 
+              placeholder="请选择社团" 
+              @change="userFormRef?.clearValidate('clubId')"
+            >
+              <el-option 
+                v-for="club in editingUser ? allClubs : clubs" 
+                :key="club.clubId" 
+                :label="club.clubName" 
+                :value="club.clubId"
+              />
             </el-select>
           </el-form-item>
           <el-form-item v-if="!editingUser" label="密码" prop="password">
@@ -167,13 +186,14 @@ const handleCurrentChange = (val) => {
   currentPage.value = val
 }
 
-// 获取社团列表
+// 修改获取社团列表方法
 const fetchClubs = async () => {
   try {
-    const response = await axios.get('/api/clubs')
+    // 修改为获取没有社长的社团列表的API
+    const response = await axios.get('/api/clubs/without-president')
     if (response.data.code === 200) {
       clubs.value = response.data.data
-      console.log('获取到的社团列表:', clubs.value)
+      console.log('获取到的可用社团列表:', clubs.value)
     }
   } catch (error) {
     console.error('获取社团列表失败:', error)
@@ -239,7 +259,6 @@ const rules = {
 
 // 监听角色变化，自动清空邮箱和社团
 watch(() => userForm.value.role, (newRole) => {
-  userForm.value.email = ''
   if (newRole === 'club_president') {
     // 当角色变为社长时，重新获取社团列表
     fetchClubs()
@@ -322,18 +341,28 @@ const handleAdd = () => {
   fetchClubs()
 }
 
-// 处理编辑用户
-const handleEdit = (row) => {
+// 修改处理编辑用户的方法
+const handleEdit = async (row) => {
   editingUser.value = row
+  
+  // 如果是社长，先获取所有社团列表
+  if (row.role === 'club_president') {
+    await fetchAllClubs()
+  }
+  
+  // 然后再设置表单数据
   userForm.value = {
-    ...row,
+    userId: row.userId,
+    username: row.username,
+    realName: row.realName,
+    email: row.email,
+    phone: row.phone,
+    role: row.role,
+    clubId: row.clubId,
     password: ''
   }
+  
   dialogVisible.value = true
-  // 如果是社长，打开对话框时获取社团列表
-  if (row.role === 'club_president') {
-    fetchClubs()
-  }
 }
 
 // 处理删除用户
@@ -410,9 +439,45 @@ const formatDate = (date) => {
   return new Date(date).toLocaleString()
 }
 
-onMounted(() => {
-  fetchUsers()
-  fetchClubs()
+// 添加获取所有社团的方法
+const allClubs = ref([])
+
+// 获取所有社团列表(包括已有社长的)
+const fetchAllClubs = async () => {
+  try {
+    const response = await axios.get('/api/clubs')
+    if (response.data.code === 200) {
+      allClubs.value = response.data.data
+      // 确保当前用户的社团也在列表中
+      if (editingUser.value?.clubId) {
+        const currentClub = allClubs.value.find(c => c.clubId === editingUser.value.clubId)
+        if (!currentClub) {
+          // 如果当前社团不在列表中，需要获取并添加
+          const clubResponse = await axios.get(`/api/clubs/${editingUser.value.clubId}`)
+          if (clubResponse.data.code === 200) {
+            allClubs.value.push(clubResponse.data.data)
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error('获取社团列表失败:', error)
+  }
+}
+
+// 根据社团ID获取社团名称的方法
+const getClubName = (clubId) => {
+  if (!clubId) return '未分配'
+  const club = allClubs.value.find(c => c.clubId === clubId)
+  return club ? club.clubName : '未知社团'
+}
+
+// 在组件挂载时获取所有社团
+onMounted(async () => {
+  await Promise.all([
+    fetchUsers(),
+    fetchAllClubs()
+  ])
 })
 
 // 修改搜索表单数据的类型定义

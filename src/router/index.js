@@ -3,6 +3,10 @@ import { useUserStore } from '../stores/user'
 
 const routes = [
   {
+    path: '/',
+    redirect: '/login'  // 修改这里，将根路径重定向到登录页面
+  },
+  {
     path: '/login',
     name: 'Login',
     component: () => import('../views/Login.vue')
@@ -44,19 +48,18 @@ const routes = [
   },
   {
     path: '/users',
-    name: 'Users',
+    name: 'UserList',
     component: () => import('../views/user/UserList.vue'),
-    meta: { requiresAuth: true, requiresAdmin: true }
+    meta: { 
+      requiresAuth: true,
+      title: '用户管理'
+    }
   },
   {
     path: '/profile',
     name: 'Profile',
     component: () => import('../views/user/Profile.vue'),
     meta: { requiresAuth: true }
-  },
-  {
-    path: '/',
-    redirect: '/dashboard'
   }
 ]
 
@@ -67,6 +70,12 @@ const router = createRouter({
 
 router.beforeEach((to, from, next) => {
   const userStore = useUserStore()
+  
+  // 如果用户已登录且尝试访问登录页面，重定向到仪表盘
+  if (userStore.isLoggedIn && to.path === '/login') {
+    next('/dashboard')
+    return
+  }
   
   // 检查是否需要认证
   if (to.matched.some(record => record.meta.requiresAuth)) {
@@ -82,7 +91,7 @@ router.beforeEach((to, from, next) => {
     if (to.matched.some(record => record.meta.requiresAdmin)) {
       if (!userStore.isAdmin) {
         ElMessage.error('您没有权限访问此页面')
-        next({ path: '/' })
+        next('/dashboard')
         return
       }
     }
